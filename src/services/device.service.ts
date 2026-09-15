@@ -201,16 +201,20 @@ class WebSerialDeviceService implements DeviceService {
   async sendPattern(
     pattern: HapticStep[],
     repeatCount = 1,
-    channel: HapticChannel = "both"
+    defaultChannel: HapticChannel = "both"
   ): Promise<void> {
+    // كل خطوة تحمل محركها الخاص (step.channel) إن حُدد، وإلا فالمحرك
+    // الافتراضي للكلمة (defaultChannel) — هذا ما يسمح بتناوب محرك
+    // الاهتزاز العلوي/السفلي داخل نمط الكلمة الواحدة.
     await this.send({
       cmd: "pattern",
       r: Math.max(1, repeatCount),
-      ch: channel,
+      ch: defaultChannel,
       s: pattern.map((step) => ({
         t: step.type === "vibrate" ? "v" : "p",
         d: step.durationMs,
         i: step.intensity,
+        ch: step.channel ?? defaultChannel,
       })),
     });
   }

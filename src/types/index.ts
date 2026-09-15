@@ -10,6 +10,10 @@ export type HapticStep = {
   type: HapticStepType;
   durationMs: number;
   intensity: number; // 1-100 (ignored for pause)
+  /** أي محرك تُطبَّق عليه هذه الخطوة تحديدًا (يتجاوز محرك الكلمة
+   * الافتراضي). غير معرّف = استخدم محرك الكلمة الافتراضي. يُتجاهل
+   * لنوع "pause" (لا يوجد محرك للتوقف). */
+  channel?: HapticChannel;
 };
 
 export type WordCategory =

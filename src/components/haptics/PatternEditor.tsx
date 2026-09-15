@@ -15,7 +15,8 @@ import {
   Vibrate,
   PauseCircle,
 } from "lucide-react";
-import type { HapticStep, WordMapping } from "@/types";
+import type { HapticChannel, HapticStep, WordMapping } from "@/types";
+import { CHANNEL_LABELS } from "@/types";
 import { vibrate, pause, PATTERN_PRESETS } from "@/lib/presets";
 import { uid } from "@/lib/id";
 import { findSimilarPatterns } from "@/lib/pattern-similarity";
@@ -29,13 +30,19 @@ type Props = {
   onChange: (pattern: HapticStep[]) => void;
   existingWords?: WordMapping[];
   excludeWordId?: string;
+  /** المحرك الافتراضي (من إعدادات الكلمة) المستخدم لأي خطوة لم تُخصَّص
+   * لها قناة صراحة، ولإنشاء الخطوات الجديدة. */
+  defaultChannel?: HapticChannel;
 };
+
+const CHANNEL_ORDER: HapticChannel[] = ["both", "top", "bottom"];
 
 export function PatternEditor({
   value,
   onChange,
   existingWords = [],
   excludeWordId,
+  defaultChannel = "both",
 }: Props) {
   const { play, stop, activeStep, isPlaying, isSupported } = useHapticPlayer();
 
@@ -113,7 +120,7 @@ export function PatternEditor({
       </div>
 
       {/* الخط الزمني */}
-      <PatternTimeline pattern={value} activeStep={activeStep} />
+      <PatternTimeline pattern={value} activeStep={activeStep} defaultChannel={defaultChannel} />
 
       {/* قائمة الخطوات */}
       <div className="space-y-2">
@@ -190,6 +197,26 @@ export function PatternEditor({
                 </label>
               )}
 
+              {step.type === "vibrate" && (
+                <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                  المحرك
+                  <select
+                    value={step.channel ?? defaultChannel}
+                    onChange={(e) =>
+                      updateStep(step.id, { channel: e.target.value as HapticChannel })
+                    }
+                    className="focus-ring h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                    aria-label={`المحرك المستهدف للخطوة ${index + 1}`}
+                  >
+                    {CHANNEL_ORDER.map((c) => (
+                      <option key={c} value={c}>
+                        {CHANNEL_LABELS[c]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <div className="ms-auto flex items-center gap-1">
                 <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => moveStep(index, -1)} disabled={index === 0} aria-label="تحريك لأعلى">
                   <ChevronUp className="h-4 w-4" />
@@ -213,7 +240,7 @@ export function PatternEditor({
             <Square className="h-4 w-4" aria-hidden /> إيقاف
           </Button>
         ) : (
-          <Button onClick={() => play(value)} disabled={!value.length} aria-label="تجربة النمط">
+          <Button onClick={() => play(value, 1, defaultChannel)} disabled={!value.length} aria-label="تجربة النمط">
             <Play className="h-4 w-4" aria-hidden /> تشغيل وتجربة
           </Button>
         )}

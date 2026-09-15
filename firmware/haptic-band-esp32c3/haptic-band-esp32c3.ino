@@ -39,16 +39,43 @@
 
     التطبيق → اللوحة:
       {"cmd":"status"}
-      {"cmd":"pattern","r":1,"ch":"both","s":[{"t":"v","d":150,"i":80},{"t":"p","d":100}]}
+      {"cmd":"pattern","r":1,"ch":"both","s":[{"t":"v","d":150,"i":80,"ch":"top"},{"t":"p","d":100}]}
       {"cmd":"sync"}
 
     اللوحة → التطبيق (ردًا على status/sync، أو عند الإقلاع):
-      {"battery":100,"fw":"1.0.0"}
+      {"battery":100,"fw":"1.1.0"}
 
   حقول خطوة النمط: "t" النوع (v = اهتزاز، p = توقف)، "d" المدة
   بالمللي ثانية، "i" الشدة من 1 إلى 100 (يُتجاهل لنوع p).
-  حقل "ch" يحدد أي محرك يعمل: "both" (كلاهما، افتراضي)، "top"
-  (العلوي فقط، D0)، "bottom" (السفلي فقط، D1).
+  حقل "ch" على مستوى الخطوة نفسها يحدد أي محرك يعمل لهذه الخطوة
+  تحديدًا: "both" (كلاهما)، "top" (العلوي فقط، D0)، "bottom" (السفلي
+  فقط، D1) — هذا ما يسمح ببناء نمط يتنقّل بين المحركين (مثلًا: نبضة
+  علوية ثم توقف ثم نبضة سفلية). حقل "ch" على مستوى الأمر (خارج "s")
+  يبقى كقيمة احتياطية تُستخدم فقط لأي خطوة لا تحمل "ch" خاصًا بها.
+
+  ─────────────────────── ملاحظات إصلاح شدة/إحساس الاهتزاز ───────────────────────
+  v1.1.0 كانت تُعاني من ثلاث مشاكل واقعية أبلغ عنها المستخدم بعد
+  التجربة على الأجهزة الفعلية، وتم إصلاحها في v1.2.0:
+    • الشدة 100 لا تعمل إطلاقًا: بعض ألواح ESP32 تُظهر عطلًا معروفًا
+      في وحدة LEDC عند دورة العمل القصوى الكاملة (255 عند دقة 8-bit)
+      يجعل الخرج ينقطع بدل أن يكون في أعلى قوته. الحل: سقف دورة العمل
+      الآن محدود بـ MAX_DUTY (أقل من 255 بقليل) بدل الوصول للحد الأقصى
+      المطلق مهما كانت الشدة المطلوبة 100.
+    • اهتزاز ضعيف جدًا أو غير محسوس عند الشدات المنخفضة: كانت أرضية
+      دورة العمل 40 فقط من 255، وهي أقل من عتبة انطلاق أغلب محركات
+      الاهتزاز الصغيرة (Coin/ERM) التي تحتاج جهد ابتدائي أعلى لكسر
+      الاحتكاك الساكن. رُفعت الأرضية إلى MIN_DUTY، وأُضيفت "ضربة
+      انطلاق" (kick-start) قصيرة جدًا بأقصى قوة في بداية كل خطوة اهتزاز
+      قبل الاستقرار على الشدة المطلوبة — يجعل حتى الشدات المنخفضة جدًا
+      محسوسة بوضوح.
+    • نبضتان بينهما توقف قصير تُحسّان كنبضة واحدة متصلة: محركات
+      الاهتزاز الصغيرة تستمر بالدوران فعليًا لعشرات المللي ثانية بعد
+      قطع التيار عنها (قصور ذاتي ميكانيكي)، فإذا كان التوقف بينهما
+      أقصر من زمن توقفها الفعلي يندمج الإحساس بالنبضتين كنبضة واحدة
+      ممدودة. الحل المضاف: MIN_PAUSE_MS يفرض حدًا أدنى فعليًا لأي خطوة
+      توقف حتى لو أرسل التطبيق مدة أقصر، بالإضافة إلى أن ضربة الانطلاق
+      أعلاه تجعل بداية كل نبضة تالية أوضح وأكثر تمييزًا رغم القصور
+      الذاتي المتبقي من النبضة السابقة.
   ══════════════════════════════════════════════════════════════════
 */
 
@@ -63,17 +90,24 @@ const int PWM_RESOLUTION = 8; // دقة 8-bit: 0-255
 const int PWM_CHANNEL_1 = 0;
 const int PWM_CHANNEL_2 = 1;
 
-const char *FW_VERSION = "1.1.0";
+const char *FW_VERSION = "1.2.0";
 const int MAX_STEPS = 32;
 
+// ── ثوابت معايرة القوة والإحساس بالاهتزاز (انظر الملاحظات أعلى الملف) ──
+const uint8_t MAX_DUTY = 250;       // سقف آمن أقل من 255 (تجنّب عطل LEDC عند الحد الأقصى المطلق)
+const uint8_t MIN_DUTY = 110;       // أرضية أعلى لضمان تجاوز عتبة انطلاق المحرك
+const unsigned long KICK_MS = 25;   // مدة ضربة الانطلاق بأقصى قوة في بداية كل نبضة
+const unsigned long MIN_PAUSE_MS = 120; // أقل مدة فعلية لأي خطوة توقف (سماح للمحرك بالتوقف فعليًا)
+
 // ── حالة تشغيل النمط الحالي (آلة حالة بدون حجب Serial) ──
+enum MotorChannel { CH_BOTH, CH_TOP, CH_BOTTOM };
+
 struct Step {
   bool isVibrate;
   unsigned long durationMs;
   uint8_t intensity; // 1-100
+  MotorChannel channel; // محرك هذه الخطوة تحديدًا
 };
-
-enum MotorChannel { CH_BOTH, CH_TOP, CH_BOTTOM };
 
 Step currentPattern[MAX_STEPS];
 int patternLength = 0;
@@ -81,9 +115,16 @@ int repeatsLeft = 0;
 int stepIndex = -1;
 unsigned long stepStartedAt = 0;
 bool playing = false;
+bool inKickPhase = false;
 MotorChannel activeChannel = CH_BOTH;
 
 String serialLine;
+
+MotorChannel parseChannel(const char *ch) {
+  if (strcmp(ch, "top") == 0) return CH_TOP;
+  if (strcmp(ch, "bottom") == 0) return CH_BOTTOM;
+  return CH_BOTH;
+}
 
 // duty يُطبَّق فقط على المحرك/المحركات التي يحددها activeChannel،
 // والمحرك غير المختار يبقى دائمًا على 0 (متوقف)
@@ -97,12 +138,17 @@ void setMotors(uint8_t duty) {
 void applyStep(int index) {
   if (index < 0 || index >= patternLength) return;
   Step &s = currentPattern[index];
+  activeChannel = s.channel;
   if (s.isVibrate) {
-    // تحويل الشدة (1-100) إلى دورة عمل PWM (40-255) بحيث تبقى
-    // أقل شدة محسوسة فعليًا وليست ضعيفة جدًا لدرجة عدم الشعور بها
-    int duty = map(constrain((int)s.intensity, 1, 100), 1, 100, 40, 255);
-    setMotors((uint8_t)duty);
+    // تحويل الشدة (1-100) إلى دورة عمل PWM ضمن (MIN_DUTY..MAX_DUTY)
+    int duty = map(constrain((int)s.intensity, 1, 100), 1, 100, MIN_DUTY, MAX_DUTY);
+    // ضربة انطلاق قصيرة بأقصى قوة (MAX_DUTY) لكسر القصور الذاتي فورًا
+    // وجعل بداية النبضة محسوسة بوضوح، حتى لو كانت الشدة المطلوبة منخفضة
+    // أو مدة الخطوة قصيرة جدًا.
+    inKickPhase = s.durationMs > KICK_MS;
+    setMotors(inKickPhase ? MAX_DUTY : (uint8_t)duty);
   } else {
+    inKickPhase = false;
     setMotors(0);
   }
   stepStartedAt = millis();
@@ -110,20 +156,28 @@ void applyStep(int index) {
 
 void stopPattern() {
   playing = false;
+  inKickPhase = false;
   patternLength = 0;
   stepIndex = -1;
   setMotors(0);
 }
 
-void startPattern(JsonArray steps, int repeats, MotorChannel channel) {
-  activeChannel = channel;
+void startPattern(JsonArray steps, int repeats, MotorChannel defaultChannel) {
   patternLength = min((int)steps.size(), MAX_STEPS);
   for (int i = 0; i < patternLength; i++) {
     JsonObject step = steps[i];
     const char *type = step["t"] | "v";
-    currentPattern[i].isVibrate = (type[0] == 'v');
-    currentPattern[i].durationMs = step["d"] | 100;
+    bool isVibrate = (type[0] == 'v');
+    currentPattern[i].isVibrate = isVibrate;
+    unsigned long d = step["d"] | 100;
+    // فرض حد أدنى فعلي لخطوات التوقف حتى لا تندمج نبضتان متتاليتان
+    // في إحساس واحد بسبب القصور الذاتي الميكانيكي للمحرك
+    if (!isVibrate && d < MIN_PAUSE_MS) d = MIN_PAUSE_MS;
+    currentPattern[i].durationMs = d;
     currentPattern[i].intensity = step["i"] | 70;
+    // قناة كل خطوة تحديدًا إن وُجدت، وإلا القناة الافتراضية للأمر كاملًا
+    const char *stepCh = step["ch"] | "";
+    currentPattern[i].channel = (stepCh[0] != '\0') ? parseChannel(stepCh) : defaultChannel;
   }
   repeatsLeft = max(1, repeats);
   stepIndex = 0;
@@ -142,7 +196,8 @@ void sendStatus() {
 }
 
 void handleCommand(const String &line) {
-  StaticJsonDocument<1024> doc;
+  // حجم أكبر (2048) لاستيعاب حتى 32 خطوة مع حقل "ch" إضافي لكل خطوة
+  StaticJsonDocument<2048> doc;
   DeserializationError err = deserializeJson(doc, line);
   if (err) return; // سطر غير صالح — تجاهل بصمت
 
@@ -153,10 +208,7 @@ void handleCommand(const String &line) {
     JsonArray steps = doc["s"].as<JsonArray>();
     int repeats = doc["r"] | 1;
     const char *ch = doc["ch"] | "both";
-    MotorChannel channel = CH_BOTH;
-    if (strcmp(ch, "top") == 0) channel = CH_TOP;
-    else if (strcmp(ch, "bottom") == 0) channel = CH_BOTTOM;
-    startPattern(steps, repeats, channel);
+    startPattern(steps, repeats, parseChannel(ch));
   }
 }
 
@@ -189,7 +241,16 @@ void loop() {
   // تشغيل النمط الحالي كآلة حالة بدون حجب (non-blocking)
   if (playing) {
     Step &s = currentPattern[stepIndex];
-    if (millis() - stepStartedAt >= s.durationMs) {
+    unsigned long elapsed = millis() - stepStartedAt;
+
+    // انتهاء ضربة الانطلاق: الانتقال من أقصى قوة إلى الشدة المطلوبة فعليًا
+    if (inKickPhase && elapsed >= KICK_MS) {
+      inKickPhase = false;
+      int duty = map(constrain((int)s.intensity, 1, 100), 1, 100, MIN_DUTY, MAX_DUTY);
+      setMotors((uint8_t)duty);
+    }
+
+    if (elapsed >= s.durationMs) {
       stepIndex++;
       if (stepIndex >= patternLength) {
         repeatsLeft--;

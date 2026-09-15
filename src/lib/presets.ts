@@ -1,8 +1,12 @@
-import type { HapticStep } from "@/types";
+import type { HapticChannel, HapticStep } from "@/types";
 import { uid } from "./id";
 
-export function vibrate(durationMs: number, intensity = 70): HapticStep {
-  return { id: uid(), type: "vibrate", durationMs, intensity };
+export function vibrate(
+  durationMs: number,
+  intensity = 70,
+  channel?: HapticChannel
+): HapticStep {
+  return { id: uid(), type: "vibrate", durationMs, intensity, channel };
 }
 
 export function pause(durationMs: number): HapticStep {

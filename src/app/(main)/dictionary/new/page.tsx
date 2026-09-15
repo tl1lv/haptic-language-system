@@ -213,15 +213,20 @@ function WordForm() {
             label="الاكتشاف داخل الجملة"
             description="عند التفعيل، تُكتشف الكلمة حتى لو وردت وسط جملة طويلة. عند التعطيل، يجب أن تكون الجملة كلها مطابقة."
           />
-          <Select
-            label="محرك الاهتزاز على السوار"
-            value={channel}
-            onChange={(e) => setChannel(e.target.value as HapticChannel)}
-          >
-            {Object.entries(CHANNEL_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </Select>
+          <div>
+            <Select
+              label="المحرك الافتراضي للخطوات الجديدة"
+              value={channel}
+              onChange={(e) => setChannel(e.target.value as HapticChannel)}
+            >
+              {Object.entries(CHANNEL_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </Select>
+            <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              يُستخدم لأي خطوة اهتزاز جديدة لم تُخصَّص لها قناة بعد — يمكنك تغيير محرك كل خطوة بشكل منفصل في مصمم النمط أدناه.
+            </p>
+          </div>
         </div>
       </Card>
 
@@ -237,6 +242,7 @@ function WordForm() {
           onChange={setPattern}
           existingWords={words}
           excludeWordId={editId ?? undefined}
+          defaultChannel={channel}
         />
       </Card>
 

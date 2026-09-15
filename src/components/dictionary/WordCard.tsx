@@ -50,7 +50,12 @@ export function WordCard({
       </div>
 
       <div className="mt-3">
-        <PatternTimeline pattern={word.pattern} activeStep={activeStep} compact />
+        <PatternTimeline
+          pattern={word.pattern}
+          activeStep={activeStep}
+          compact
+          defaultChannel={word.channel}
+        />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
