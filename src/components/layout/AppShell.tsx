@@ -30,7 +30,7 @@ const NAV_ITEMS = [
 ];
 
 const MOBILE_NAV = NAV_ITEMS.filter((item) =>
-  ["/dashboard", "/listening", "/dictionary", "/training", "/settings"].includes(
+  ["/dashboard", "/listening", "/dictionary", "/devices", "/settings"].includes(
     item.href
   )
 );
