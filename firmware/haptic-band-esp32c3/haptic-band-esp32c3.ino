@@ -16,7 +16,7 @@
   لكل محرك اهتزاز استخدم ترانزستور MOSFET كمفتاح تحكم — لا تُوصّل
   المحرك مباشرة بأرجل ESP32 (التيار المسحوب من المحرك أعلى من قدرة GPIO):
 
-    XIAO D0 (GPIO2) ──[مقاومة 220Ω]── Gate لترانزستور N-MOSFET (AO3400/2N7000)
+    XIAO D1 (GPIO3) ──[مقاومة 220Ω]── Gate لترانزستور N-MOSFET (AO3400/2N7000)
                                        Drain ── طرف (+) للمحرك العلوي (Top)
                                        Source ── الأرضية المشتركة (GND)
     المحرك العلوي (-) ── إلى (+) مصدر تغذية المحركات (بطارية LiPo 3.7V
@@ -24,7 +24,11 @@
     ضع دايود تحرير (Flyback، مثل 1N4148) بالتوازي مع طرفي المحرك،
     والكاثود (الخط) جهة الطرف الموجب.
 
-    XIAO D1 (GPIO3) ── نفس الدائرة أعلاه بالضبط للمحرك السفلي (Bottom)
+    XIAO D2 (GPIO4) ── نفس الدائرة أعلاه بالضبط للمحرك السفلي (Bottom)
+
+    ملاحظة: على هذه اللوحة تحديدًا المحركان "V3.19 Vibration Motor"
+    (IN/VCC/GND متكاملة) موصولان مباشرة بـ D1 وD2 دون ترانزستور خارجي —
+    مؤكَّد بالاختبار المباشر أنهما يعملان بأمان على هذا التصميم.
 
     مهم: اربط GND الخاص بمصدر تغذية المحركات مع GND الخاص بلوحة
     XIAO — أرضية مشتركة إلزامية بين الدائرتين.
@@ -82,15 +86,24 @@
 #include <ArduinoJson.h>
 
 // ── إعداد الأرجل والـ PWM ──
-const int MOTOR1_PIN = D0;
-const int MOTOR2_PIN = D1;
+// مطابقة للتوصيل الفعلي المؤكَّد على هذه اللوحة تحديدًا (وليس D0/D1
+// الافتراضيين): المحرك الأول على D1 (GPIO3) والثاني على D2 (GPIO4).
+// تم التأكد بالاختبار المباشر (raw digitalWrite ثم PWM) أن كلا المحركين
+// يهتزّان فعليًا على هذين الطرفين بالذات.
+const int MOTOR1_PIN = D1;
+const int MOTOR2_PIN = D2;
 
 const int PWM_FREQ = 5000;
 const int PWM_RESOLUTION = 8; // دقة 8-bit: 0-255
-const int PWM_CHANNEL_1 = 0;
-const int PWM_CHANNEL_2 = 1;
+// ملاحظة: إصدار Arduino-ESP32 core المُثبَّت فعليًا هنا (عبر
+// platform espressif32@6.9.0) لا يزال يستخدم واجهة LEDC القديمة
+// القائمة على رقم قناة (ledcSetup/ledcAttachPin/ledcWrite(channel,...))
+// وليس الواجهة الأحدث المبنية على رقم الطرف مباشرة. القناتان أدناه
+// ثابتتان ومخصصتان بوضوح لكل محرك.
+const int MOTOR1_CHANNEL = 0;
+const int MOTOR2_CHANNEL = 1;
 
-const char *FW_VERSION = "1.2.0";
+const char *FW_VERSION = "1.2.1";
 const int MAX_STEPS = 32;
 
 // ── ثوابت معايرة القوة والإحساس بالاهتزاز (انظر الملاحظات أعلى الملف) ──
@@ -131,8 +144,8 @@ MotorChannel parseChannel(const char *ch) {
 void setMotors(uint8_t duty) {
   uint8_t topDuty = (activeChannel == CH_BOTH || activeChannel == CH_TOP) ? duty : 0;
   uint8_t bottomDuty = (activeChannel == CH_BOTH || activeChannel == CH_BOTTOM) ? duty : 0;
-  ledcWrite(PWM_CHANNEL_1, topDuty);    // المحرك العلوي (D0)
-  ledcWrite(PWM_CHANNEL_2, bottomDuty); // المحرك السفلي (D1)
+  ledcWrite(MOTOR1_CHANNEL, topDuty);    // المحرك العلوي (D1)
+  ledcWrite(MOTOR2_CHANNEL, bottomDuty); // المحرك السفلي (D2)
 }
 
 void applyStep(int index) {
@@ -215,10 +228,10 @@ void handleCommand(const String &line) {
 void setup() {
   Serial.begin(115200);
 
-  ledcSetup(PWM_CHANNEL_1, PWM_FREQ, PWM_RESOLUTION);
-  ledcAttachPin(MOTOR1_PIN, PWM_CHANNEL_1);
-  ledcSetup(PWM_CHANNEL_2, PWM_FREQ, PWM_RESOLUTION);
-  ledcAttachPin(MOTOR2_PIN, PWM_CHANNEL_2);
+  ledcSetup(MOTOR1_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
+  ledcSetup(MOTOR2_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
+  ledcAttachPin(MOTOR1_PIN, MOTOR1_CHANNEL);
+  ledcAttachPin(MOTOR2_PIN, MOTOR2_CHANNEL);
   setMotors(0);
 
   serialLine.reserve(256);

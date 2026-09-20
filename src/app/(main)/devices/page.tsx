@@ -4,7 +4,7 @@ import {
   Watch,
   Battery,
   Signal,
-  Usb,
+  Bluetooth,
   Unplug,
   Vibrate,
   RefreshCw,
@@ -13,10 +13,14 @@ import {
 } from "lucide-react";
 import { useDeviceStore } from "@/stores/device.store";
 import { useDictionaryStore } from "@/stores/dictionary.store";
+import { deviceService } from "@/services/device.service";
+import { bleDeviceService } from "@/services/ble-device.service";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+
+const isUsingBluetooth = deviceService === bleDeviceService;
 
 export default function DevicesPage() {
   const { status, info, syncing, lastSyncCount, error, connect, disconnect, sendTest, sync } =
@@ -28,8 +32,8 @@ export default function DevicesPage() {
       <div>
         <h1 className="text-2xl font-bold">الأجهزة المتصلة</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          إدارة السوار القابل للارتداء (XIAO ESP32C3) عبر اتصال سلكي بكابل
-          USB-C. البنية جاهزة لإضافة اتصال Bluetooth لاحقًا دون تعديل الواجهات.
+          إدارة السوار القابل للارتداء (XIAO ESP32C3) عبر بلوتوث لاسلكي (BLE)
+          — لا حاجة لكابل USB أثناء الارتداء اليومي، فقط عند برمجة اللوحة.
         </p>
       </div>
 
@@ -43,10 +47,15 @@ export default function DevicesPage() {
         <EmptyState
           icon={Watch}
           title="لا يوجد جهاز متصل"
-          description="وصّل الـ XIAO ESP32C3 بكابل USB-C بالكمبيوتر، ثم اضغط الزر واختر منفذه من نافذة المتصفح."
+          description={
+            isUsingBluetooth
+              ? "تأكد أن السوار مُشغَّل، ثم اضغط الزر واختره من نافذة البلوتوث التي يعرضها المتصفح."
+              : "وصّل الـ XIAO ESP32C3 بكابل USB-C بالكمبيوتر، ثم اضغط الزر واختر منفذه من نافذة المتصفح."
+          }
           action={
-            <Button size="lg" onClick={connect} aria-label="التوصيل عبر USB">
-              <Usb className="h-5 w-5" aria-hidden /> توصيل عبر USB
+            <Button size="lg" onClick={connect} aria-label="الاتصال بالسوار">
+              <Bluetooth className="h-5 w-5" aria-hidden />
+              {isUsingBluetooth ? "الاتصال عبر بلوتوث" : "توصيل عبر USB"}
             </Button>
           }
         />
@@ -91,7 +100,7 @@ export default function DevicesPage() {
               </div>
               <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
                 <Signal className="mx-auto mb-1 h-5 w-5 text-secondary-500" aria-hidden />
-                <p className="text-lg font-bold">سلكي (USB)</p>
+                <p className="text-lg font-bold">{isUsingBluetooth ? "بلوتوث (BLE)" : "سلكي (USB)"}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">نوع الاتصال</p>
               </div>
               <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">

@@ -1,6 +1,7 @@
 import type { DeviceInfo, HapticChannel, HapticStep } from "@/types";
 import { hapticService } from "./haptic.service";
 import { vibrate, pause } from "@/lib/presets";
+import { bleDeviceService } from "./ble-device.service";
 
 export interface DeviceService {
   isSupported(): boolean;
@@ -52,8 +53,12 @@ class SimulatedDeviceService implements DeviceService {
   }
 
   async sendPattern(pattern: HapticStep[], repeatCount = 1): Promise<void> {
-    // المحاكاة لا تفرّق بين المحركين (جهاز افتراضي بلا قنوات)
-    await hapticService.playPattern(pattern, repeatCount);
+    // المحاكاة لا تفرّق بين المحركين (جهاز افتراضي بلا قنوات).
+    // القوة تُفرض دائمًا على الأقصى هنا أيضًا، لتطابق سلوك الجهاز الحقيقي.
+    const maxed = pattern.map((step) =>
+      step.type === "vibrate" ? { ...step, intensity: 100 } : step
+    );
+    await hapticService.playPattern(maxed, repeatCount);
   }
 
   async syncDictionary(wordCount: number): Promise<{ synced: number }> {
@@ -206,6 +211,11 @@ class WebSerialDeviceService implements DeviceService {
     // كل خطوة تحمل محركها الخاص (step.channel) إن حُدد، وإلا فالمحرك
     // الافتراضي للكلمة (defaultChannel) — هذا ما يسمح بتناوب محرك
     // الاهتزاز العلوي/السفلي داخل نمط الكلمة الواحدة.
+    //
+    // القوة المرسلة فعليًا للجهاز دائمًا 100 (أقصى قوة)، بطلب صريح من
+    // المستخدم، بصرف النظر عن القيمة المضبوطة في مصمم الأنماط — الشدة
+    // المعروضة في الواجهة تبقى كما صمّمها المستخدم (لأغراض العرض
+    // والتصميم المستقبلي)، لكن ما يصل فعليًا للمحرك هو الحد الأقصى دومًا.
     await this.send({
       cmd: "pattern",
       r: Math.max(1, repeatCount),
@@ -213,7 +223,7 @@ class WebSerialDeviceService implements DeviceService {
       s: pattern.map((step) => ({
         t: step.type === "vibrate" ? "v" : "p",
         d: step.durationMs,
-        i: step.intensity,
+        i: step.type === "vibrate" ? 100 : step.intensity,
         ch: step.channel ?? defaultChannel,
       })),
     });
@@ -231,10 +241,15 @@ const webSerialService = new WebSerialDeviceService();
 const simulatedService = new SimulatedDeviceService();
 
 /**
- * نستخدم Web Serial الحقيقي (اتصال سلكي عبر USB) عند توفره في المتصفح
- * (كروم أو إيدج على سطح المكتب)، ونعود تلقائيًا للمحاكاة على المتصفحات
- * التي لا تدعمه (سفاري/iOS، وكروم على أندرويد لا يدعم Web Serial بعد).
+ * ترتيب الأفضلية: بلوتوث حقيقي (Web Bluetooth) أولًا — هذا ما يطلبه
+ * المستخدم صراحةً ويسمح بارتداء السوار بعيدًا عن الحاسوب دون كابل —
+ * ثم Web Serial السلكي كبديل إن كان المتصفح لا يدعم Web Bluetooth
+ * (سفاري مثلًا يدعم الاثنين معًا بشرط تفعيل الأعلام التجريبية، بينما
+ * كروم/إيدج على سطح المكتب يدعمان Web Bluetooth افتراضيًا)، ثم أخيرًا
+ * وضع المحاكاة إن لم يتوفر أي منهما.
  */
-export const deviceService: DeviceService = webSerialService.isSupported()
-  ? webSerialService
-  : simulatedService;
+export const deviceService: DeviceService = bleDeviceService.isSupported()
+  ? bleDeviceService
+  : webSerialService.isSupported()
+    ? webSerialService
+    : simulatedService;

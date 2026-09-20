@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultCooldownSeconds: 8,
   maxWordsPerSentence: 3,
   playbackOrder: "priority",
-  defaultIntensity: 70,
+  defaultIntensity: 100,
   phoneVibration: true,
   soundSimulation: true,
   onboardingComplete: false,

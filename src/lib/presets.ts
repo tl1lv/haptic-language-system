@@ -3,7 +3,7 @@ import { uid } from "./id";
 
 export function vibrate(
   durationMs: number,
-  intensity = 70,
+  intensity = 100,
   channel?: HapticChannel
 ): HapticStep {
   return { id: uid(), type: "vibrate", durationMs, intensity, channel };

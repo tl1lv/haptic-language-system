@@ -5,3 +5,6 @@ out
 .env*
 tsconfig.tsbuildinfo
 .DS_Store
+firmware/.pio
+.claude
+.wrangler
